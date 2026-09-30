@@ -11,6 +11,7 @@ import {
   TUNING_OPTIONS,
   TUNING_SCHEMA,
   createForce,
+  isColor,
   isDirectionalLayout,
   listLayouts,
   registerForce,
@@ -19,6 +20,7 @@ import {
   resolveSettings,
   resolveTuning,
   runLayout,
+  uniqueById,
 } from "../src/index.js";
 
 const SETTINGS = {
@@ -294,4 +296,129 @@ test("emitter: on() returns an unsubscribe; once() fires once; a throwing listen
   }
   assert.deepEqual(seen, ["a1", "b1"]);
   assert.equal(errors.length, 2);
+});
+
+test("colours: functional ones need the right number of parts, each in range", () => {
+  for (const good of [
+    "#abc",
+    "#aabbccdd",
+    "transparent",
+    "rgb(1, 2, 3)",
+    "rgba(1,2,3,0.5)",
+    "rgb(1 2 3 / 50%)",
+    "rgb(100%, 0%, 50%)",
+    "hsl(10, 50%, 40%)",
+    "hsl(210deg 40% 30% / 0.2)",
+    "hsla(-30, 100%, 0%, 1)",
+  ])
+    assert.ok(isColor(good), good);
+  for (const bad of [
+    "rgb(1,2)",
+    "hsl(10,50%)",
+    "rgb(1,2,3,4,5)",
+    "rgb(256, 0, 0)",
+    "rgb(-1, 0, 0)",
+    "rgba(1, 2, 3, 1.5)",
+    "rgb(1 2 3 / 0.5 / 1)",
+    "hsl(10, 150%, 40%)",
+    "rgb(a, b, c)",
+    "blue-ish",
+    "",
+  ])
+    assert.equal(isColor(bad), false, bad);
+});
+
+test("duplicate node ids: the first is kept, with one warning", () => {
+  const { result: graph, warnings } = capture(
+    () =>
+      new LayoutGraph(
+        [
+          { id: "a", w: 10, h: 10 },
+          { id: "b", w: 10, h: 10 },
+          { id: "a", w: 99, h: 99 },
+        ],
+        [{ source: "a", target: "b" }],
+      ),
+  );
+  assert.deepEqual(graph.ids, ["a", "b"]);
+  assert.equal(graph.w[graph.indexById.get("a")], 10);
+  assert.equal(graph.positions().size, 2);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /duplicate id \("a"\)/);
+  const list = [{ id: "x" }];
+  assert.equal(uniqueById(list), list); // unique: the same array back
+});
+
+test("a custom layout that throws falls back to the tree (strict: rethrows); a bad mode becomes none", () => {
+  registerLayout("test-throws", {
+    seed() {
+      throw new Error("seed boom");
+    },
+  });
+  const { result, warnings } = capture(() =>
+    runLayout(smallGraph(), { ...SETTINGS, layout: "test-throws" }),
+  );
+  assert.equal(result.options.mode, "layered");
+  assert.match(warnings.join(), /"test-throws" threw \(seed boom\)/);
+  assert.throws(
+    () =>
+      runLayout(
+        smallGraph(),
+        { ...SETTINGS, layout: "test-throws" },
+        { strict: true },
+      ),
+    /seed boom/,
+  );
+  registerLayout("test-bad-mode", { seed: () => ({ mode: "wobbly" }) });
+  const bad = capture(() =>
+    runLayout(smallGraph(), { ...SETTINGS, layout: "test-bad-mode" }),
+  );
+  assert.equal(bad.result.options.mode, "none");
+  assert.match(bad.warnings.join(), /mode "wobbly"/);
+});
+
+test("physics mode none: one start and one settle per drag, however many frames", () => {
+  const settings = { ...SETTINGS, physicsMode: "none" };
+  const graph = smallGraph();
+  const physics = new LivePhysics(settings);
+  physics.simulation = runLayout(graph, settings);
+  const events = [];
+  for (const type of ["grab", "start", "release", "settle"])
+    physics.on(type, () => events.push(type));
+  physics.grab("a", {
+    ids: graph.ids,
+    links: [],
+    positionOf: (id) => graph.positionOf(id),
+  });
+  for (let k = 0; k < 20; k++) {
+    physics.drag("a", { x: k, y: k });
+    physics.step();
+  }
+  physics.drag("a", { x: 50, y: 50 });
+  physics.release("a");
+  assert.deepEqual(physics.step().moved, [["a", 50, 50]]);
+  assert.deepEqual(events, ["grab", "start", "release", "settle"]);
+  // Let go without a final move: settles at once. stop() mid-drag settles too.
+  events.length = 0;
+  physics.grab("a", {
+    ids: graph.ids,
+    links: [],
+    positionOf: (id) => graph.positionOf(id),
+  });
+  physics.release("a");
+  physics.grab("a", {
+    ids: graph.ids,
+    links: [],
+    positionOf: (id) => graph.positionOf(id),
+  });
+  physics.stop();
+  assert.deepEqual(events, [
+    "grab",
+    "start",
+    "release",
+    "settle",
+    "grab",
+    "start",
+    "settle",
+  ]);
 });

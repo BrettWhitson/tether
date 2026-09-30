@@ -2,7 +2,7 @@
  * Tether's public API. Everything an app needs is exported from here; the modules behind it (tether/<module>.js)
  * stay importable for tools that want one piece, but only this entry point is the stable interface.
  */
-export { LayoutGraph } from "./layout-graph.js";
+export { LayoutGraph, uniqueById } from "./layout-graph.js";
 export { runLayout } from "./run-layout.js";
 export {
   registerLayout,

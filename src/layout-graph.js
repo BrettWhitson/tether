@@ -13,8 +13,10 @@ export class LayoutGraph {
    * @param {{ id: string, w: number, h: number, fullW?: number, fullH?: number, x?: number, y?: number,
    *           root?: boolean, ghost?: boolean }[]} nodes  ghosts are leaving: laid out, but not simulated
    * @param {{ source: string, target: string }[]} edges
+   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning.
    */
   constructor(nodes, edges) {
+    nodes = uniqueById(nodes, "Tether: LayoutGraph");
     const count = (this.count = nodes.length);
     this.ids = nodes.map((node) => node.id);
     this.indexById = new Map(this.ids.map((id, i) => [id, i]));
@@ -68,10 +70,33 @@ export class LayoutGraph {
     return i == null ? null : { x: this.x[i], y: this.y[i] };
   }
 
-  /** id → { x, y } for every node. */
+  /** Every node's position, as a Map: id → { x, y }. */
   positions() {
     return new Map(
       this.ids.map((id, i) => [id, { x: this.x[i], y: this.y[i] }]),
     );
   }
+}
+
+/**
+ * `items` with one per id: the first of each id is kept, later ones are dropped, with one warning per call that
+ * found any (naming a few of the ids). Returns `items` itself when every id is unique.
+ * @template {{ id: string }} T
+ * @param {T[]} items
+ * @param {string} [scope]  who is asking, for the warning
+ * @returns {T[]}
+ */
+export function uniqueById(items, scope = "Tether") {
+  const seen = new Set(),
+    duplicates = new Set();
+  for (const item of items)
+    if (seen.has(item.id)) duplicates.add(item.id);
+    else seen.add(item.id);
+  if (!duplicates.size) return items;
+  const shown = [...duplicates].slice(0, 5).map((id) => JSON.stringify(id));
+  console.warn(
+    `${scope}: ${duplicates.size} duplicate id${duplicates.size > 1 ? "s" : ""} (${shown.join(", ")}${duplicates.size > 5 ? ", …" : ""}); keeping the first of each`,
+  );
+  const kept = new Set();
+  return items.filter((item) => !kept.has(item.id) && kept.add(item.id));
 }

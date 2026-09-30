@@ -27,6 +27,7 @@ export declare class LayoutGraph {
    * @param {{ id: string, w: number, h: number, fullW?: number, fullH?: number, x?: number, y?: number,
    *           root?: boolean, ghost?: boolean }[]} nodes  ghosts are leaving: laid out, but not simulated
    * @param {{ source: string, target: string }[]} edges
+   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning.
    */
   constructor(
     nodes: {
@@ -62,7 +63,7 @@ export declare class LayoutGraph {
     x: number;
     y: number;
   };
-  /** id → { x, y } for every node. */
+  /** Every node's position, as a Map: id → { x, y }. */
   positions(): Map<
     string,
     {
@@ -71,3 +72,16 @@ export declare class LayoutGraph {
     }
   >;
 }
+/**
+ * `items` with one per id: the first of each id is kept, later ones are dropped, with one warning per call that
+ * found any (naming a few of the ids). Returns `items` itself when every id is unique.
+ * @template {{ id: string }} T
+ * @param {T[]} items
+ * @param {string} [scope]  who is asking, for the warning
+ * @returns {T[]}
+ */
+export declare function uniqueById<
+  T extends {
+    id: string;
+  },
+>(items: T[], scope?: string): T[];

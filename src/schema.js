@@ -49,13 +49,66 @@ export function defaultsOf(schema) {
 }
 
 const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const FUNCTIONAL = /^(?:rgba?|hsla?)\(\s*[-\d.%\s,/]+\)$/i;
+const FUNCTIONAL = /^(rgba?|hsla?)\(([^()]*)\)$/i;
+const NUMBER = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i;
 
-/** A colour the renderer can parse: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl()/hsla(), or "transparent". */
+/** A plain number, or NaN. */
+function numberOf(text) {
+  return NUMBER.test(text) ? parseFloat(text) : NaN;
+}
+
+/** A number or a percentage within range: `max` for plain numbers, 0..100 for percentages. */
+function inRange(text, max, { percent = true, plain = true } = {}) {
+  if (text.endsWith("%"))
+    return (
+      percent &&
+      numberOf(text.slice(0, -1)) >= 0 &&
+      numberOf(text.slice(0, -1)) <= 100
+    );
+  const value = numberOf(text);
+  return plain && value >= 0 && value <= max;
+}
+
+/**
+ * rgb()/rgba()/hsl()/hsla() with the right number of parts, each in range: three (comma- or space-separated), plus an
+ * optional alpha (after a comma, or a slash). rgb parts are 0..255 or 0..100%; hsl's hue is any angle (deg optional),
+ * saturation and lightness 0..100(%); alpha is 0..1 or 0..100%.
+ */
+function isFunctionalColor(value) {
+  const match = FUNCTIONAL.exec(value.trim());
+  if (!match) return false;
+  const kind = match[1].toLowerCase().slice(0, 3);
+  const body = match[2].trim();
+  let parts,
+    alpha = null;
+  if (body.includes(",")) {
+    parts = body.split(",").map((part) => part.trim());
+    if (parts.length === 4) alpha = parts.pop();
+  } else {
+    const pieces = body.split("/");
+    if (pieces.length > 2) return false;
+    parts = pieces[0].trim().split(/\s+/);
+    if (pieces.length === 2) alpha = pieces[1].trim();
+  }
+  if (parts.length !== 3) return false;
+  if (alpha !== null && !inRange(alpha, 1)) return false;
+  if (kind === "rgb") return parts.every((part) => inRange(part, 255));
+  const hue = parts[0].replace(/deg$/i, "");
+  return (
+    Number.isFinite(numberOf(hue)) &&
+    inRange(parts[1], 100) &&
+    inRange(parts[2], 100)
+  );
+}
+
+/**
+ * A colour the renderer can parse: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl()/hsla() with the right number of
+ * parts, each in range, or "transparent".
+ */
 export function isColor(value) {
   return (
     typeof value === "string" &&
-    (HEX.test(value) || FUNCTIONAL.test(value) || value === "transparent")
+    (HEX.test(value) || value === "transparent" || isFunctionalColor(value))
   );
 }
 

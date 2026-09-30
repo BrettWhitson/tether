@@ -25,7 +25,8 @@ The graph as the layouts see it: flat typed arrays.
 - `edges`: `{ source, target }[]`, parent → child. Edges to unknown nodes and self-loops are dropped.
 
 It has `ids`, `indexById`, `count`, `x`, `y` (centres, written by the layouts), `w`, `h`, `fullW`, `fullH`,
-`sources`, `targets` (edges as index pairs), `rootId`, `positionOf(id)` and `positions()` (id → `{ x, y }`).
+`sources`, `targets` (edges as index pairs), `rootId`, `positionOf(id)` and `positions()` (a `Map`: id → `{ x, y }`). Ids must be unique: of nodes sharing an id, the first is kept
+and the rest dropped, with a warning (`uniqueById` does the same for your own lists).
 
 ### `runLayout(graph, settings, { tuning?, settle?, strict? })`
 
@@ -141,7 +142,8 @@ engine:
 
 - a number out of range is clamped into it;
 - a whole-number constant given a fraction is rounded;
-- a wrong type, an unknown enum value or a malformed colour is replaced by the default;
+- a wrong type, an unknown enum value or a malformed colour is replaced by the default (a functional colour needs
+  the right number of parts, each in range: `rgb(1,2)` or `rgb(300,0,0)` isn't one);
 - an unknown key is ignored (with a "did you mean" hint for typos), except in settings, which keep them.
 
 Each problem is reported once with `console.warn`. With `strict: true` (runLayout, resolveSettings, resolveTuning,
@@ -190,7 +192,7 @@ Physics modes:
   link. Letting go keeps the pulled shape.
 - **floating:** the whole graph is live. The held node drags its neighbours, the rest sways and makes room, and it
   all settles again after you let go.
-- **none:** the held node moves alone.
+- **none:** the held node moves alone. `start` is announced on the grab and `settle` once it's let go.
 
 ### Events
 
@@ -240,6 +242,9 @@ runLayout(graph, { layout: "grid" });
   - `{ mode: "radial", depthById, rootId }`: nodes keep their ring around the root (pinned);
   - `{ mode: "none" }`: no structure; the forces just polish it;
   - `null`: this graph can't be laid out this way (`runLayout` returns null).
+
+  A seed that throws, or returns another mode, is warned about and falls back (to the tree, or to `"none"`); with
+  `strict: true` it throws.
 - `context`: `{ tuning, labelShare, siblingGap, levelGap, sizeOf(i) }`, the spacing the built-in layouts use.
 - `directional`: true when levels run along an axis set by `direction` (Prism then puts labels beside nodes in
   horizontal flows and routes edges with right angles).

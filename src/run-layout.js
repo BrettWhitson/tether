@@ -41,14 +41,31 @@ export function runLayout(
   // (low repel packs tighter and lets labels overlap).
   const labelShare = Math.min(1, s.repelForce / t.referenceRepel);
   const sizeOf = (i) => graph.footprint(i, labelShare, 1);
-  const setup = layout.seed(graph, s, {
+  const context = {
     tuning: t,
     labelShare,
     siblingGap: s.repelForce * t.siblingGapPerRepel,
     levelGap: Math.max(0, s.linkDistance - t.seedNodeSize),
     sizeOf,
-  });
+  };
+  let setup;
+  try {
+    setup = layout.seed(graph, s, context);
+  } catch (error) {
+    // A layout of someone else's that throws: fall back to the tree, like an unknown one (the built-ins don't).
+    if (strict || layout === getLayout("tree")) throw error;
+    console.warn(
+      `Tether: layout "${name}" threw (${error?.message ?? error}); using "tree"`,
+    );
+    setup = getLayout("tree").seed(graph, s, context);
+  }
   if (!setup) return null;
+  if (!["layered", "radial", "none"].includes(setup.mode)) {
+    const message = `Tether: layout "${name}" returned mode ${JSON.stringify(setup.mode)}; expected "layered", "radial" or "none" (using "none")`;
+    if (strict) throw new TypeError(message);
+    console.warn(message);
+    setup = { ...setup, mode: "none" };
+  }
   const floating = s.physicsMode === "floating";
   const options = {
     ...setup,

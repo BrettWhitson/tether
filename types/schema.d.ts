@@ -65,8 +65,11 @@ export type ResolveOptions = {
  * @returns {any}
  */
 export declare function defaultsOf(schema: any): any;
-/** A colour the renderer can parse: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl()/hsla(), or "transparent". */
-export declare function isColor(value: any): boolean;
+/**
+ * A colour the renderer can parse: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl()/hsla() with the right number of
+ * parts, each in range, or "transparent".
+ */
+export declare function isColor(value: any): any;
 /**
  * Check one value against its field. Returns `{ value }` (possibly clamped), or `{ value, problem }` with the value
  * to use instead.

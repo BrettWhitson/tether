@@ -43,6 +43,8 @@ export class LivePhysics extends Emitter {
   #netIds = [];
   /** Mode none: where the held node goes next, or null. */
   #single = null;
+  /** Mode none: "start" was announced at the grab, and "settle" is due once it's let go and drawn. */
+  #singleOpen = false;
   /** The node being dragged and the engine holding it ("net", "simulation" or "single"), or null. */
   #held = null;
   /** step()'s list of moved nodes for a simulation run, reused frame to frame. */
@@ -112,6 +114,9 @@ export class LivePhysics extends Emitter {
     if (mode === "none") {
       this.#held = { id, engine: "single" };
       this.emit("grab", { id, mode });
+      // One start and one settle per drag (not per frame): the node moves alone, only while it's held.
+      this.#singleOpen = true;
+      this.emit("start", { reason: "drag" });
       return;
     }
     if (mode === "floating") {
@@ -184,7 +189,7 @@ export class LivePhysics extends Emitter {
     const { engine } = this.#held;
     if (engine === "single") {
       this.#single = { id, x: point.x, y: point.y };
-      this.#run("single", "drag");
+      this.#running = "single";
       return;
     }
     if (engine === "simulation") {
@@ -204,7 +209,10 @@ export class LivePhysics extends Emitter {
     const { engine } = this.#held;
     this.#held = null;
     this.emit("release", { id, mode: MODE_OF_ENGINE[engine] });
-    if (engine === "single") return;
+    if (engine === "single") {
+      if (!this.#running) this.#closeSingle(); // else after the last move is drawn
+      return;
+    }
     if (engine === "simulation") {
       if (!this.#simulation) return;
       this.#simulation.release(id);
@@ -269,7 +277,16 @@ export class LivePhysics extends Emitter {
     this.#until = null;
     this.#net = null;
     this.#single = null;
+    if (this.#running === "single") this.#running = null;
     this.#quiet();
+    this.#closeSingle();
+  }
+
+  /** Mode none: the drag is over. */
+  #closeSingle() {
+    if (!this.#singleOpen) return;
+    this.#singleOpen = false;
+    this.emit("settle");
   }
 
   /**
@@ -282,7 +299,8 @@ export class LivePhysics extends Emitter {
     if (this.#running === "single") {
       const single = this.#single;
       this.#single = null;
-      this.#quiet();
+      this.#running = null;
+      if (!this.#held) this.#closeSingle();
       return {
         moving: false,
         moved: single ? [[single.id, single.x, single.y]] : [],
