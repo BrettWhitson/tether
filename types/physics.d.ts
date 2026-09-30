@@ -127,6 +127,8 @@ export declare class ForceSimulation {
     stillness: number;
     settleTicks: number;
     settleWork: number;
+    releaseTicks: number;
+    deadZone: number;
     softCollision: number;
     elasticStiffnessBase: number;
     elasticStiffnessPerLink: number;
@@ -244,9 +246,22 @@ export declare class Quadtree {
   stack: Int32Array<any>;
   capacity: any;
   cells: number;
+  flatX: Float64Array<any>;
+  flatY: Float64Array<any>;
+  flatMass: Float64Array<any>;
+  flatSize2: Float64Array<any>;
+  flatPoint: Int32Array<any>;
+  flatSkip: Int32Array<any>;
+  subtree: Int32Array<any>;
   /** @param {number} points  expected point count (it grows as needed) */
   constructor(points: number, maxDepth?: number);
   build(x: any, y: any, count: any): void;
+  /**
+   * Lay the cells out in the order a depth-first walk visits them (children last to first, as a stack pops them), in
+   * flat arrays: centre (flatX, flatY), mass, size squared, the leaf's point (or -1 empty, -2 internal) and flatSkip,
+   * the position just past the cell's subtree. Returns the number of cells.
+   */
+  flatten(): number;
 }
 /**
  * A uniform grid of linked lists over points, rebuilt every tick: `first(gx, gy)` then follow `next`. Cells live in

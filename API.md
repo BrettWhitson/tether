@@ -118,7 +118,9 @@ fills in the defaults and checks what's given. Pass a partial tuning to `runLayo
 | `floatInTicks` | `240` | 0 – 3600 | The most ticks a new floating graph spends floating into place before it's brought to rest. |
 | `stillness` | `0.02` | 0 – 2 | A floating graph counts as settled once no node moves more than this per tick (at the drag heat). |
 | `settleTicks` | `4000` | 0 – 5000 | The most ticks spent bringing a floating graph to rest. |
-| `settleWork` | `1350000` | 0 – 10000000 | The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed). |
+| `settleWork` | `100000` | 0 – 10000000 | The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed). |
+| `releaseTicks` | `300` | 0 – 3600 | After a drag, the most ticks the graph spends settling (at the drag heat) before it stops. |
+| `deadZone` | `0.2` | 0 – 2 | While live, a node pushed less than this per tick stays put, so a grab or release disturbs only what it reaches. |
 | `softCollision` | `0.3` | 0 – 1 | How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest). |
 
 **Elastic**

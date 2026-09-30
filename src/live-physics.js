@@ -216,7 +216,12 @@ export class LivePhysics extends Emitter {
     if (engine === "simulation") {
       if (!this.#simulation) return;
       this.#simulation.release(id);
-      this.#simulation.reheat(0); // cool down from here
+      // Settle at the drag heat, and stop once still: the forces at rest were recorded at that heat (holdRest), and
+      // only there do they cancel exactly. Cooling instead unbalances busy nodes, and the graph wanders off.
+      let ticks = 0;
+      this.#until = (simulation) =>
+        ++ticks >= this.#tuning.releaseTicks ||
+        simulation.motion < this.#tuning.stillness;
       if (!this.#running) this.#run("simulation", "drag");
       return;
     }

@@ -175,3 +175,73 @@ test("floating in always ends, after floatInTicks at most", () => {
   assert.equal(physics.active, false);
   assert.ok(frames <= 50, `${frames} frames`);
 });
+
+test("floating: touching and letting go moves nothing; a drag settles quickly, without the far graph wandering", () => {
+  let seed = 7;
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const nodes = [],
+    edges = [];
+  for (let i = 0; i < 1000; i++) {
+    nodes.push({
+      id: `n${i}`,
+      w: 48,
+      h: 48,
+      fullW: 48 + random() * 120,
+      fullH: 64,
+      root: i === 0,
+    });
+    if (i)
+      edges.push({
+        source: `n${Math.floor(random() ** 1.5 * i)}`,
+        target: `n${i}`,
+      });
+  }
+  for (const direction of ["LR", "radial"]) {
+    const settings = {
+      direction,
+      physicsMode: "floating",
+      centerForce: 0.2,
+      repelForce: 8,
+      linkForce: 0.5,
+      linkDistance: 120,
+    };
+    const run = (drag) => {
+      const graph = new LayoutGraph(nodes, edges);
+      const physics = new LivePhysics(settings);
+      physics.simulation = runLayout(graph, settings);
+      const start = graph.positions();
+      const now = new Map(start);
+      physics.grab("n333", {
+        ids: graph.ids,
+        links: edges,
+        positionOf: (id) => now.get(id),
+      });
+      const p = start.get("n333");
+      for (let f = 0; f < 30; f++) {
+        if (drag) physics.drag("n333", { x: p.x + f * 3, y: p.y });
+        for (const [id, x, y] of physics.step().moved) now.set(id, { x, y });
+      }
+      physics.release("n333");
+      let frames = 0;
+      while (physics.active && frames++ < 1000)
+        for (const [id, x, y] of physics.step().moved) now.set(id, { x, y });
+      const moved = [...start].map(([id, a]) =>
+        Math.hypot(now.get(id).x - a.x, now.get(id).y - a.y),
+      );
+      return { frames, moved: moved.sort((a, b) => b - a) };
+    };
+    const touched = run(false);
+    assert.equal(touched.moved[0], 0, `${direction}: a touch moves nothing`);
+    const dragged = run(true);
+    assert.ok(
+      dragged.frames < 200,
+      `${direction}: settles in ${dragged.frames} frames`,
+    );
+    // Most of the graph stays exactly where it was.
+    const still = dragged.moved.filter((d) => d < 0.5).length;
+    assert.ok(
+      still > nodes.length * 0.6,
+      `${direction}: ${still} of ${nodes.length} nodes stay put`,
+    );
+  }
+});

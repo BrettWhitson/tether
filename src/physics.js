@@ -279,6 +279,10 @@ export class ForceSimulation {
         vy[i] -= rest.y[i] * alpha;
       }
     let motion = 0;
+    // Held at rest (a live floating graph): a node pushed less than the dead zone stays put. The compensated forces
+    // balance exactly only where they were recorded; without this, the leftovers (a big graph is never perfectly
+    // settled) feed on themselves after a release, and far-off parts of the graph slowly drift.
+    const deadZone = rest ? t.deadZone : 0;
     for (let i = 0; i < this.count; i++) {
       if (!Number.isNaN(fx[i])) {
         x[i] = fx[i];
@@ -288,6 +292,10 @@ export class ForceSimulation {
       }
       vx[i] *= 1 - t.velocityDecay;
       vy[i] *= 1 - t.velocityDecay;
+      if (deadZone && Math.abs(vx[i]) + Math.abs(vy[i]) < deadZone) {
+        vx[i] = vy[i] = 0;
+        continue;
+      }
       x[i] += vx[i];
       y[i] += vy[i];
       const speed = Math.abs(vx[i]) + Math.abs(vy[i]);
@@ -541,29 +549,29 @@ export class ForceSimulation {
     let netX = 0,
       netY = 0;
     tree.build(x, y, this.count);
-    const { mass, cx, cy, size, index, child, internal, stack } = tree;
+    // The tree flattened in visiting order: a linear walk (skip a whole subtree by jumping to its end) over arrays
+    // laid out in the order they're read, instead of a stack over scattered cells. Same cells, same order, same sums.
+    const cells = tree.flatten();
+    const { flatX, flatY, flatMass, flatSize2, flatPoint, flatSkip } = tree;
     const anchor = this.#anchor;
     const theta2 = this.tuning.theta * this.tuning.theta;
     for (let i = 0; i < this.count; i++) {
       const xi = x[i],
         yi = y[i];
       let forceX = 0,
-        forceY = 0,
-        top = 0;
-      stack[top++] = 0;
-      while (top) {
-        const cell = stack[--top];
-        const dx = cx[cell] - xi,
-          dy = cy[cell] - yi;
+        forceY = 0;
+      for (let k = 0; k < cells;) {
+        const dx = flatX[k] - xi,
+          dy = flatY[k] - yi;
         let distanceSquared = dx * dx + dy * dy;
         if (distanceSquared < 1) distanceSquared = 1;
+        const point = flatPoint[k]; // the leaf's point, -1 for an empty leaf, -2 for an internal cell
         // Far enough (the cell looks small from here), or a single point: one push from its centre of mass.
-        if (
-          !internal[cell] ||
-          size[cell] * size[cell] < theta2 * distanceSquared
-        ) {
-          if (index[cell] === i || !mass[cell]) continue;
-          const push = (strength * mass[cell]) / distanceSquared;
+        if (point > -2 || flatSize2[k] < theta2 * distanceSquared) {
+          const cellMass = flatMass[k];
+          k = flatSkip[k];
+          if (point === i || !cellMass) continue;
+          const push = (strength * cellMass) / distanceSquared;
           if (dx === 0 && dy === 0) {
             // Right on top of it: push apart in a direction fixed by the node's index, or they'd never separate.
             const angle = i * 2.399963229728653;
@@ -573,13 +581,7 @@ export class ForceSimulation {
           }
           forceX += dx * push;
           forceY += dy * push;
-        } else {
-          const base = cell * 4;
-          for (let q = 0; q < 4; q++) {
-            const c = child[base + q];
-            if (c) stack[top++] = c;
-          }
-        }
+        } else k++;
       }
       vx[i] -= forceX;
       vy[i] -= forceY;
@@ -794,6 +796,56 @@ export class Quadtree {
       this.child[slot] = created;
     }
     return this.child[slot];
+  }
+
+  /**
+   * Lay the cells out in the order a depth-first walk visits them (children last to first, as a stack pops them), in
+   * flat arrays: centre (flatX, flatY), mass, size squared, the leaf's point (or -1 empty, -2 internal) and flatSkip,
+   * the position just past the cell's subtree. Returns the number of cells.
+   */
+  flatten() {
+    const cells = this.cells;
+    if (!this.flatX || this.flatX.length < cells) {
+      const capacity = this.capacity;
+      this.flatX = new Float64Array(capacity);
+      this.flatY = new Float64Array(capacity);
+      this.flatMass = new Float64Array(capacity);
+      this.flatSize2 = new Float64Array(capacity);
+      this.flatPoint = new Int32Array(capacity);
+      this.flatSkip = new Int32Array(capacity);
+      this.subtree = new Int32Array(capacity);
+    }
+    const { mass, cx, cy, size, index, child, internal, stack, subtree } = this;
+    // Subtree sizes: children are created after their parents, so a backwards pass sees every child first.
+    for (let cell = cells - 1; cell >= 0; cell--) {
+      let count = 1;
+      if (internal[cell])
+        for (let q = 0; q < 4; q++) {
+          const c = child[cell * 4 + q];
+          if (c) count += subtree[c];
+        }
+      subtree[cell] = count;
+    }
+    const { flatX, flatY, flatMass, flatSize2, flatPoint, flatSkip } = this;
+    let k = 0,
+      top = 0;
+    stack[top++] = 0;
+    while (top) {
+      const cell = stack[--top];
+      flatX[k] = cx[cell];
+      flatY[k] = cy[cell];
+      flatMass[k] = mass[cell];
+      flatSize2[k] = size[cell] * size[cell];
+      flatPoint[k] = internal[cell] ? -2 : index[cell];
+      flatSkip[k] = k + subtree[cell];
+      k++;
+      if (internal[cell])
+        for (let q = 0; q < 4; q++) {
+          const c = child[cell * 4 + q];
+          if (c) stack[top++] = c;
+        }
+    }
+    return k;
   }
 
   /** Centres of mass, children before parents (cells are created after their parents, so walk backwards). */

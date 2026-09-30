@@ -93,6 +93,8 @@ export declare class LivePhysics extends Emitter<{
     stillness: number;
     settleTicks: number;
     settleWork: number;
+    releaseTicks: number;
+    deadZone: number;
     softCollision: number;
     elasticStiffnessBase: number;
     elasticStiffnessPerLink: number;
@@ -138,6 +140,8 @@ export declare class LivePhysics extends Emitter<{
     stillness: number;
     settleTicks: number;
     settleWork: number;
+    releaseTicks: number;
+    deadZone: number;
     softCollision: number;
     elasticStiffnessBase: number;
     elasticStiffnessPerLink: number;

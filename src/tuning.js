@@ -296,11 +296,29 @@ export const TUNING_SCHEMA = Object.freeze({
   settleWork: integer(
     "Floating",
     "Settle work",
-    1350000,
+    100000,
     0,
     10000000,
     50000,
     "The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed).",
+  ),
+  releaseTicks: integer(
+    "Floating",
+    "Release ticks",
+    300,
+    0,
+    3600,
+    30,
+    "After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.",
+  ),
+  deadZone: number(
+    "Floating",
+    "Dead zone",
+    0.2,
+    0,
+    2,
+    0.005,
+    "While live, a node pushed less than this per tick stays put, so a grab or release disturbs only what it reaches.",
   ),
   softCollision: number(
     "Floating",
@@ -420,6 +438,8 @@ export const TUNING_SCHEMA = Object.freeze({
  * @property {number} stillness  A floating graph counts as settled once no node moves more than this per tick (at the drag heat).
  * @property {number} settleTicks  The most ticks spent bringing a floating graph to rest.
  * @property {number} settleWork  The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed).
+ * @property {number} releaseTicks  After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.
+ * @property {number} deadZone  While live, a node pushed less than this per tick stays put.
  * @property {number} softCollision  How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest).
  * @property {number} elasticStiffnessBase  How firmly links keep their shape, before Link strength.
  * @property {number} elasticStiffnessPerLink  Added per unit of the link force setting.

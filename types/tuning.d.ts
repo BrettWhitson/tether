@@ -122,6 +122,14 @@ export type Tuning = {
    */
   settleWork: number;
   /**
+   * After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.
+   */
+  releaseTicks: number;
+  /**
+   * While live, a node pushed less than this per tick stays put.
+   */
+  deadZone: number;
+  /**
    * How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest).
    */
   softCollision: number;
@@ -190,6 +198,8 @@ export type Tuning = {
  * @property {number} stillness  A floating graph counts as settled once no node moves more than this per tick (at the drag heat).
  * @property {number} settleTicks  The most ticks spent bringing a floating graph to rest.
  * @property {number} settleWork  The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed).
+ * @property {number} releaseTicks  After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.
+ * @property {number} deadZone  While live, a node pushed less than this per tick stays put.
  * @property {number} softCollision  How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest).
  * @property {number} elasticStiffnessBase  How firmly links keep their shape, before Link strength.
  * @property {number} elasticStiffnessPerLink  Added per unit of the link force setting.
