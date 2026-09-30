@@ -12,8 +12,9 @@ export class LayoutGraph {
   /**
    * @param {{ id: string, w: number, h: number, fullW?: number, fullH?: number, x?: number, y?: number,
    *           root?: boolean, ghost?: boolean }[]} nodes  ghosts are leaving: laid out, but not simulated
-   * @param {{ source: string, target: string }[]} edges
-   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning.
+   * @param {{ id?: string, source: string, target: string }[]} edges
+   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning. The same
+   *   goes for edges, whose id is their `id` or "source->target" (so an edge given twice pulls once).
    */
   constructor(nodes, edges) {
     nodes = uniqueById(nodes, "Tether: LayoutGraph");
@@ -41,7 +42,15 @@ export class LayoutGraph {
     /** Edges as index pairs (both ends present, no self-loops). */
     this.sources = [];
     this.targets = [];
-    for (const { source, target } of edges) {
+    const keyed = edges.map((edge) => ({
+      id: edge.id ?? `${edge.source}->${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+    }));
+    for (const { source, target } of uniqueById(
+      keyed,
+      "Tether: LayoutGraph edges",
+    )) {
       const s = this.indexById.get(source),
         t = this.indexById.get(target);
       if (s == null || t == null || s === t) continue;

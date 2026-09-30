@@ -22,7 +22,8 @@ The graph as the layouts see it: flat typed arrays.
 - `nodes`: `{ id, w, h, fullW?, fullH?, x?, y?, root?, ghost? }[]`. `w × h` is the node's box, and `fullW × fullH`
   is the box it makes with its label (layouts leave room for it). `root: true` marks the root; otherwise tree
   layouts have none. Ghosts (nodes on their way out) are laid out but not simulated.
-- `edges`: `{ source, target }[]`, parent → child. Edges to unknown nodes and self-loops are dropped.
+- `edges`: `{ id?, source, target }[]`, parent → child. Edges to unknown nodes and self-loops are dropped, and so are
+  repeats (an edge's id is its `id`, or `"source->target"`): an edge given twice pulls once.
 
 It has `ids`, `indexById`, `count`, `x`, `y` (centres, written by the layouts), `w`, `h`, `fullW`, `fullH`,
 `sources`, `targets` (edges as index pairs), `rootId`, `positionOf(id)` and `positions()` (a `Map`: id → `{ x, y }`). Ids must be unique: of nodes sharing an id, the first is kept

@@ -422,3 +422,25 @@ test("physics mode none: one start and one settle per drag, however many frames"
     "settle",
   ]);
 });
+
+test("duplicate edges: an edge given twice (same id, or same ends without one) is kept once", () => {
+  const nodes = ["a", "b", "c"].map((id) => ({ id, w: 10, h: 10 }));
+  const { result: graph, warnings } = capture(
+    () =>
+      new LayoutGraph(nodes, [
+        { source: "a", target: "b" },
+        { source: "a", target: "b" },
+        { id: "e1", source: "a", target: "c" },
+        { id: "e1", source: "b", target: "c" },
+        { id: "e2", source: "a", target: "b" },
+      ]),
+  );
+  assert.deepEqual(
+    graph.sources.map(
+      (s, k) => `${graph.ids[s]}${graph.ids[graph.targets[k]]}`,
+    ),
+    ["ab", "ac", "ab"],
+  );
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /LayoutGraph edges: 2 duplicate ids/);
+});

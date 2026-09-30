@@ -26,8 +26,9 @@ export declare class LayoutGraph {
   /**
    * @param {{ id: string, w: number, h: number, fullW?: number, fullH?: number, x?: number, y?: number,
    *           root?: boolean, ghost?: boolean }[]} nodes  ghosts are leaving: laid out, but not simulated
-   * @param {{ source: string, target: string }[]} edges
-   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning.
+   * @param {{ id?: string, source: string, target: string }[]} edges
+   *   Ids must be unique: of nodes sharing an id, the first is kept and the rest dropped, with a warning. The same
+   *   goes for edges, whose id is their `id` or "source->target" (so an edge given twice pulls once).
    */
   constructor(
     nodes: {
@@ -42,6 +43,7 @@ export declare class LayoutGraph {
       ghost?: boolean;
     }[],
     edges: {
+      id?: string;
       source: string;
       target: string;
     }[],
