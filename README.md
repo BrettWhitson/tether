@@ -1,5 +1,9 @@
 # Tether
 
+> **This repository is archived.** Tether is now part of
+> [Prismatrix](https://github.com/BrettWhitson/prismatrix), the layout and physics layer (`prismatrix/layout`), with this repository's full history.
+> Its tags here keep working for anything still pinned to them.
+
 Graph layout and physics on plain arrays: no DOM, no dependencies. It positions a graph's nodes and keeps them
 moving believably afterwards. [Prism](https://github.com/BrettWhitson/prism) draws what it positions.
 
