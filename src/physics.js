@@ -750,52 +750,68 @@ export class Quadtree {
     }
     this.cells = 0;
     this.#newCell(minX, minY, Math.max(maxX - minX, maxY - minY, 1));
-    for (let i = 0; i < count; i++) this.#insert(i, x, y);
+    this.#insertAll(x, y, count);
     this.#summarise(x, y);
   }
 
-  #insert(i, x, y) {
-    let cell = 0;
-    for (let depth = 0; ; depth++) {
-      if (!this.internal[cell]) {
-        if (this.index[cell] < 0) {
-          this.index[cell] = i; // an empty leaf
-          this.mass[cell] = 1;
-          return;
-        }
-        if (depth > this.maxDepth) {
-          this.mass[cell]++; // coincident points: merge
-          return;
-        }
-        // Split the leaf: its point moves one level down, into a fresh (empty) child.
-        const previous = this.index[cell];
-        this.index[cell] = -1;
-        this.mass[cell] = 0;
-        this.internal[cell] = 1;
-        const child = this.#childFor(cell, previous, x, y);
-        this.index[child] = previous;
-        this.mass[child] = 1;
+  /**
+   * #insert for every point, with the cell arrays held in locals (re-read only when the tree grows): the same tree,
+   * built without a method call and a property load per level.
+   */
+  #insertAll(x, y, count) {
+    let { left, top, size, mass, cx, cy, index, internal, child } = this;
+    const maxDepth = this.maxDepth;
+    const newChild = (cell, slot, right, bottom, half) => {
+      if (this.cells === this.capacity) {
+        this.#grow(this.capacity * 2);
+        ({ left, top, size, mass, cx, cy, index, internal, child } = this);
       }
-      cell = this.#childFor(cell, i, x, y);
+      const created = this.cells++;
+      left[created] = left[cell] + right * half;
+      top[created] = top[cell] + bottom * half;
+      size[created] = half;
+      mass[created] = 0;
+      cx[created] = cy[created] = 0;
+      index[created] = -1;
+      internal[created] = 0;
+      const base = created * 4;
+      child[base] = child[base + 1] = child[base + 2] = child[base + 3] = 0;
+      child[slot] = created;
+      return created;
+    };
+    // The child of `cell` that point p falls in, created if needed.
+    const childFor = (cell, p) => {
+      const half = size[cell] / 2;
+      const right = x[p] >= left[cell] + half ? 1 : 0,
+        bottom = y[p] >= top[cell] + half ? 1 : 0;
+      const slot = cell * 4 + right + bottom * 2;
+      return child[slot] || newChild(cell, slot, right, bottom, half);
+    };
+    for (let i = 0; i < count; i++) {
+      let cell = 0;
+      for (let depth = 0; ; depth++) {
+        if (!internal[cell]) {
+          if (index[cell] < 0) {
+            index[cell] = i; // an empty leaf
+            mass[cell] = 1;
+            break;
+          }
+          if (depth > maxDepth) {
+            mass[cell]++; // coincident points: merge
+            break;
+          }
+          // Split the leaf: its point moves one level down, into a fresh (empty) child.
+          const previous = index[cell];
+          index[cell] = -1;
+          mass[cell] = 0;
+          internal[cell] = 1;
+          const moved = childFor(cell, previous);
+          index[moved] = previous;
+          mass[moved] = 1;
+        }
+        cell = childFor(cell, i);
+      }
     }
-  }
-
-  /** The child of `cell` that point i falls in, created if needed. */
-  #childFor(cell, i, x, y) {
-    const half = this.size[cell] / 2;
-    const right = x[i] >= this.left[cell] + half ? 1 : 0,
-      bottom = y[i] >= this.top[cell] + half ? 1 : 0;
-    const slot = cell * 4 + right + bottom * 2;
-    if (!this.child[slot]) {
-      // Create first: growing replaces the arrays, so `this.child` must be read after.
-      const created = this.#newCell(
-        this.left[cell] + right * half,
-        this.top[cell] + bottom * half,
-        half,
-      );
-      this.child[slot] = created;
-    }
-    return this.child[slot];
   }
 
   /**
