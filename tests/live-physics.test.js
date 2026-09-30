@@ -41,7 +41,7 @@ function setUp(physicsMode, settle = true) {
     return n;
   };
   const graphOnScreen = { ids: IDS, links: LINKS, positionOf };
-  return { physics, positions, positionOf, run, graphOnScreen };
+  return { physics, settings, positions, positionOf, run, graphOnScreen };
 }
 
 const distance = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
@@ -116,4 +116,62 @@ test("without a simulation, floating and shaking do nothing", () => {
   physics.drag("a", { x: 1, y: 1 });
   physics.release("a");
   assert.equal(physics.active, false);
+});
+
+test("a drag stays in the mode it started in, even if the setting changes before it ends", () => {
+  const { physics, settings, positions, positionOf, run, graphOnScreen } =
+    setUp("floating");
+  physics.grab("a", graphOnScreen);
+  settings.physicsMode = "elastic"; // changed mid-drag
+  const p = positionOf("a");
+  positions.set("a", { x: p.x + 50, y: p.y });
+  physics.drag("a", { x: p.x + 50, y: p.y });
+  physics.release("a");
+  run();
+  assert.equal(physics.active, false, "the simulation cooled and stopped");
+  const i = physics.simulation.indexById.get("a");
+  assert.ok(Number.isNaN(physics.simulation.fx[i]), "the node was let go");
+});
+
+test("stop lets go of a held node; a new simulation stops the old run; release without a grab does nothing", () => {
+  const { physics, graphOnScreen } = setUp("floating");
+  physics.grab("a", graphOnScreen);
+  const simulation = physics.simulation;
+  physics.stop();
+  const i = simulation.indexById.get("a");
+  assert.ok(Number.isNaN(simulation.fx[i]));
+  assert.equal(simulation.alphaTarget, 0);
+
+  physics.grab("a", graphOnScreen);
+  physics.simulation = null; // the graph was replaced mid-drag
+  assert.equal(physics.active, false);
+  assert.deepEqual(physics.step(), { moving: false, moved: [] });
+  assert.ok(Number.isNaN(simulation.fx[i]), "the old simulation let go too");
+
+  physics.release("nobody");
+  physics.drag("nobody", { x: 0, y: 0 });
+  assert.equal(physics.active, false);
+});
+
+test("elastic: nodes without a position sit the drag out instead of breaking it", () => {
+  const { physics, positionOf, run } = setUp("elastic");
+  const partial = (id) => (id === "e" ? undefined : positionOf(id));
+  physics.grab("a", { ids: IDS, links: LINKS, positionOf: partial });
+  assert.ok(physics.active);
+  physics.drag("a", { x: positionOf("a").x + 80, y: positionOf("a").y });
+  physics.release("a");
+  run();
+  assert.equal(physics.active, false);
+  // Grabbing a node with no position does nothing.
+  physics.grab("e", { ids: IDS, links: LINKS, positionOf: partial });
+  assert.equal(physics.active, false);
+});
+
+test("floating in always ends, after floatInTicks at most", () => {
+  const { physics, run } = setUp("floating", false);
+  physics.tuning = { floatInTicks: 50, stillness: 0 }; // stillness 0: it would never go still on its own
+  assert.ok(physics.floatIn());
+  const frames = run(1000);
+  assert.equal(physics.active, false);
+  assert.ok(frames <= 50, `${frames} frames`);
 });
