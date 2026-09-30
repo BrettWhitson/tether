@@ -2,6 +2,23 @@
 
 Tether: graph layout and physics. Versions follow `0.MINOR.PATCH` until the first stable release.
 
+## 0.3.1 (2026-09-30)
+
+Floating graphs respond to small drags again, and radial ones don't spin.
+
+- The dead zone (0.3.0) only holds nodes the drag hasn't reached. A node that has moved more than `wakeDistance` (2)
+  wakes its linked neighbours, so a pull travels along the links in full. In 0.3.0, a short drag of a leaf didn't
+  move the item it feeds at all.
+- Radial graphs no longer spin about their pinned centre when one leaf is pulled: the graph's net turn is taken out
+  of the free nodes' velocities, like the net push elsewhere.
+- `liveAnchor` (0.02): while live, each node is pulled very gently toward where it rested, so nothing slowly turns or
+  slides as a whole.
+- After a release the graph stops once nothing moves more than the dead zone per tick. Before, it could hover in a
+  slow back-and-forth until `releaseTicks`.
+- In the reported case (a 3 × 6 tree, 90 ticks), pulling a leaf 8, 20, 40 and 80 units moves its product 4, 9, 16
+  and 27 units top-down (it was 0, 9, 25 and 13), and 0.2, 2, 7 and 16 units radially (it was 0, 0, 0.6 and 1).
+  Large graphs settle within 20 to 50 frames of a release, and a touch still moves nothing.
+
 ## 0.3.0 (2026-09-30)
 
 - **Faster layouts, the same results.** Repulsion walks a flattened quadtree: its cells laid out in the order

@@ -320,6 +320,24 @@ export const TUNING_SCHEMA = Object.freeze({
     0.005,
     "While live, a node pushed less than this per tick stays put, so a grab or release disturbs only what it reaches.",
   ),
+  liveAnchor: number(
+    "Floating",
+    "Live anchor",
+    0.02,
+    0,
+    1,
+    0.005,
+    "While live, how firmly each node is pulled back toward where it rested (per unit of heat): keeps the graph from turning or sliding as a whole.",
+  ),
+  wakeDistance: number(
+    "Floating",
+    "Wake distance",
+    2,
+    0,
+    50,
+    0.1,
+    "While live, a node that has moved this far wakes its linked neighbours: the dead zone stops holding them.",
+  ),
   softCollision: number(
     "Floating",
     "Soft collision",
@@ -439,6 +457,8 @@ export const TUNING_SCHEMA = Object.freeze({
  * @property {number} settleTicks  The most ticks spent bringing a floating graph to rest.
  * @property {number} settleWork  The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed).
  * @property {number} releaseTicks  After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.
+ * @property {number} liveAnchor  While live, how firmly each node is pulled back toward where it rested.
+ * @property {number} wakeDistance  While live, a node that has moved this far wakes its linked neighbours.
  * @property {number} deadZone  While live, a node pushed less than this per tick stays put.
  * @property {number} softCollision  How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest).
  * @property {number} elasticStiffnessBase  How firmly links keep their shape, before Link strength.

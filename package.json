@@ -1,6 +1,6 @@
 {
   "name": "tether",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "license": "MIT",
   "description": "Tether: graph layout and physics. Tidy tree, radial and layered layouts, a Barnes–Hut force simulation, and an elastic network for dragging, on plain arrays.",

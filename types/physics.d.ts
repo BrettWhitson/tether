@@ -128,6 +128,8 @@ export declare class ForceSimulation {
     settleTicks: number;
     settleWork: number;
     releaseTicks: number;
+    liveAnchor: number;
+    wakeDistance: number;
     deadZone: number;
     softCollision: number;
     elasticStiffnessBase: number;
@@ -156,6 +158,8 @@ export declare class ForceSimulation {
   degree: Uint32Array<ArrayBuffer>;
   linkSources: Int32Array<ArrayBuffer>;
   linkTargets: Int32Array<ArrayBuffer>;
+  neighbourStart: Int32Array<ArrayBuffer>;
+  neighbours: Int32Array<ArrayBuffer>;
   root: number;
   structureTarget: Float64Array<ArrayBuffer>;
   restLength: Float64Array<ArrayBuffer>;

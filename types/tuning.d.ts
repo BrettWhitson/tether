@@ -126,6 +126,14 @@ export type Tuning = {
    */
   releaseTicks: number;
   /**
+   * While live, how firmly each node is pulled back toward where it rested.
+   */
+  liveAnchor: number;
+  /**
+   * While live, a node that has moved this far wakes its linked neighbours.
+   */
+  wakeDistance: number;
+  /**
    * While live, a node pushed less than this per tick stays put.
    */
   deadZone: number;
@@ -199,6 +207,8 @@ export type Tuning = {
  * @property {number} settleTicks  The most ticks spent bringing a floating graph to rest.
  * @property {number} settleWork  The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed).
  * @property {number} releaseTicks  After a drag, the most ticks the graph spends settling (at the drag heat) before it stops.
+ * @property {number} liveAnchor  While live, how firmly each node is pulled back toward where it rested.
+ * @property {number} wakeDistance  While live, a node that has moved this far wakes its linked neighbours.
  * @property {number} deadZone  While live, a node pushed less than this per tick stays put.
  * @property {number} softCollision  How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest).
  * @property {number} elasticStiffnessBase  How firmly links keep their shape, before Link strength.

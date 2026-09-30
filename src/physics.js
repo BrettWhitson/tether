@@ -103,6 +103,20 @@ export class ForceSimulation {
     }
     this.linkSources = Int32Array.from(sources);
     this.linkTargets = Int32Array.from(targets);
+    // Each node's linked neighbours (both directions), as offsets into one flat list.
+    this.neighbourStart = new Int32Array(count + 1);
+    for (let e = 0; e < sources.length; e++) {
+      this.neighbourStart[sources[e] + 1]++;
+      this.neighbourStart[targets[e] + 1]++;
+    }
+    for (let i = 0; i < count; i++)
+      this.neighbourStart[i + 1] += this.neighbourStart[i];
+    this.neighbours = new Int32Array(sources.length * 2);
+    const fill = this.neighbourStart.slice(0, count);
+    for (let e = 0; e < sources.length; e++) {
+      this.neighbours[fill[sources[e]]++] = targets[e];
+      this.neighbours[fill[targets[e]]++] = sources[e];
+    }
 
     const rootId = options.rootId ?? graph.rootId;
     this.root = this.indexById.get(rootId) ?? null;
@@ -272,27 +286,41 @@ export class ForceSimulation {
     this.#applyForces(alpha);
     const { x, y, vx, vy, fx, fy } = this;
     const rest = this.#rest;
-    if (rest)
-      // Take away what was already pushing each node at rest (it scales with the heat, like the forces).
+    if (rest) {
+      // Take away what was already pushing each node at rest (it scales with the heat, like the forces), and pull
+      // each node gently back toward where it rested: nothing else holds a graph against turning or sliding as a
+      // whole (a radial graph spins freely about its pinned centre), so a nudge would set it all adrift.
+      const home = t.liveAnchor * alpha;
       for (let i = 0; i < this.count; i++) {
-        vx[i] -= rest.x[i] * alpha;
-        vy[i] -= rest.y[i] * alpha;
+        vx[i] -= rest.x[i] * alpha + (x[i] - rest.startX[i]) * home;
+        vy[i] -= rest.y[i] * alpha + (y[i] - rest.startY[i]) * home;
       }
+      if (this.options.mode === "radial" && this.root != null)
+        this.#cancelSpin();
+    }
     let motion = 0;
     // Held at rest (a live floating graph): a node pushed less than the dead zone stays put. The compensated forces
     // balance exactly only where they were recorded; without this, the leftovers (a big graph is never perfectly
     // settled) feed on themselves after a release, and far-off parts of the graph slowly drift.
+    // The dead zone only holds nodes the drag hasn't reached: a held node is awake, and a node that has moved more
+    // than wakeDistance from rest wakes its linked neighbours, so a pull travels along the links in full.
     const deadZone = rest ? t.deadZone : 0;
+    const awake = rest?.awake;
     for (let i = 0; i < this.count; i++) {
       if (!Number.isNaN(fx[i])) {
         x[i] = fx[i];
         y[i] = fy[i];
         vx[i] = vy[i] = 0;
+        if (awake && !awake[i]) this.#wake(i, rest);
         continue;
       }
       vx[i] *= 1 - t.velocityDecay;
       vy[i] *= 1 - t.velocityDecay;
-      if (deadZone && Math.abs(vx[i]) + Math.abs(vy[i]) < deadZone) {
+      if (
+        deadZone &&
+        !awake[i] &&
+        Math.abs(vx[i]) + Math.abs(vy[i]) < deadZone
+      ) {
         vx[i] = vy[i] = 0;
         continue;
       }
@@ -303,6 +331,14 @@ export class ForceSimulation {
     }
     /** The fastest free node's speed this tick (world units): how far from rest the graph is. */
     this.motion = motion;
+    if (awake)
+      for (let i = 0; i < this.count; i++)
+        if (
+          awake[i] === 1 &&
+          Math.abs(x[i] - rest.startX[i]) + Math.abs(y[i] - rest.startY[i]) >
+            t.wakeDistance
+        )
+          this.#wake(i, rest);
     this.#collide();
     if (rest?.collideX)
       for (let i = 0; i < this.count; i++) {
@@ -366,7 +402,51 @@ export class ForceSimulation {
     }
     vx.set(savedX);
     vy.set(savedY);
+    // Nothing is disturbed yet: what the drag reaches wakes, link by link (see tick).
+    rest.startX = Float64Array.from(this.x);
+    rest.startY = Float64Array.from(this.y);
+    rest.awake = new Uint8Array(this.count);
     this.#rest = rest;
+  }
+
+  /**
+   * Radial graphs turn freely about their pinned centre, so a pull on one leaf would spin the whole graph. Take the
+   * graph's net turn out of the free nodes' velocities (like the net push elsewhere): the pulled branch still bends,
+   * the rest of the graph doesn't rotate with it.
+   */
+  #cancelSpin() {
+    const { x, y, vx, vy, fx } = this;
+    const ox = x[this.root],
+      oy = y[this.root];
+    let turn = 0,
+      inertia = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (!Number.isNaN(fx[i])) continue;
+      const rx = x[i] - ox,
+        ry = y[i] - oy;
+      turn += rx * vy[i] - ry * vx[i];
+      inertia += rx * rx + ry * ry;
+    }
+    if (!inertia) return;
+    const spin = turn / inertia;
+    for (let i = 0; i < this.count; i++) {
+      if (!Number.isNaN(fx[i])) continue;
+      vx[i] += spin * (y[i] - oy);
+      vy[i] -= spin * (x[i] - ox);
+    }
+  }
+
+  /**
+   * Node i is awake (the dead zone no longer holds it); once it has moved (awake 1 → 2), its linked neighbours wake
+   * too. A held node counts as moved.
+   */
+  #wake(i, rest) {
+    const awake = rest.awake;
+    awake[i] = 2;
+    for (let k = this.neighbourStart[i]; k < this.neighbourStart[i + 1]; k++) {
+      const j = this.neighbours[k];
+      if (!awake[j]) awake[j] = 1;
+    }
   }
 
   /** Stop treating a position as rest (the forces act in full again). */

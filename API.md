@@ -121,6 +121,8 @@ fills in the defaults and checks what's given. Pass a partial tuning to `runLayo
 | `settleWork` | `100000` | 0 – 10000000 | The most work (nodes × ticks) spent bringing a floating graph to rest before showing it (very big graphs may still drift a little when grabbed). |
 | `releaseTicks` | `300` | 0 – 3600 | After a drag, the most ticks the graph spends settling (at the drag heat) before it stops. |
 | `deadZone` | `0.2` | 0 – 2 | While live, a node pushed less than this per tick stays put, so a grab or release disturbs only what it reaches. |
+| `liveAnchor` | `0.02` | 0 – 1 | While live, how firmly each node is pulled back toward where it rested (per unit of heat): keeps the graph from turning or sliding as a whole. |
+| `wakeDistance` | `2` | 0 – 50 | While live, a node that has moved this far wakes its linked neighbours: the dead zone stops holding them. |
 | `softCollision` | `0.3` | 0 – 1 | How hard overlapping nodes push apart while floating (as a push on their speed, so the graph can rest). |
 
 **Elastic**

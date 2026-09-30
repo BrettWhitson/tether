@@ -216,7 +216,9 @@ export class LivePhysics extends Emitter {
       let ticks = 0;
       this.#until = (simulation) =>
         ++ticks >= this.#tuning.releaseTicks ||
-        simulation.motion < this.#tuning.stillness;
+        // Still enough: nothing moves more than the dead zone would let a resting node move.
+        simulation.motion <
+          Math.max(this.#tuning.stillness, this.#tuning.deadZone);
       if (!this.#running) this.#run("simulation", "drag");
       return;
     }

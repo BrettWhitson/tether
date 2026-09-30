@@ -245,3 +245,73 @@ test("floating: touching and letting go moves nothing; a drag settles quickly, w
     );
   }
 });
+
+test("floating: a dragged leaf tugs its product, more the further it's pulled; a radial graph doesn't spin", () => {
+  const nodes = [{ id: "r", w: 48, h: 48, root: true }],
+    edges = [];
+  for (let p = 0; p < 3; p++) {
+    nodes.push({ id: `p${p}`, w: 48, h: 48 });
+    edges.push({ source: "r", target: `p${p}` });
+    for (let l = 0; l < 6; l++) {
+      nodes.push({ id: `l${p}${l}`, w: 48, h: 48 });
+      edges.push({ source: `p${p}`, target: `l${p}${l}` });
+    }
+  }
+  for (const direction of ["TB", "radial"]) {
+    const response = (nudge) => {
+      const settings = {
+        direction,
+        physicsMode: "floating",
+        centerForce: 0.2,
+        repelForce: 8,
+        linkForce: 0.5,
+        linkDistance: 120,
+      };
+      const graph = new LayoutGraph(nodes, edges);
+      const physics = new LivePhysics(settings);
+      physics.simulation = runLayout(graph, settings);
+      const start = graph.positions();
+      const now = new Map(start);
+      physics.grab("l10", {
+        ids: graph.ids,
+        links: edges,
+        positionOf: (id) => now.get(id),
+      });
+      const leaf = start.get("l10"),
+        product = start.get("p1");
+      const dx = leaf.x - product.x,
+        dy = leaf.y - product.y,
+        length = Math.hypot(dx, dy);
+      physics.drag("l10", {
+        x: leaf.x + (dx / length) * nudge,
+        y: leaf.y + (dy / length) * nudge,
+      });
+      for (let f = 0; f < 90; f++)
+        for (const [id, x, y] of physics.step().moved) now.set(id, { x, y });
+      const moved = (id) =>
+        Math.hypot(
+          now.get(id).x - start.get(id).x,
+          now.get(id).y - start.get(id).y,
+        );
+      return {
+        product: moved("p1"),
+        others: Math.max(...["p0", "p2", "l00", "l25"].map(moved)),
+      };
+    };
+    const small = response(20),
+      medium = response(40),
+      large = response(80);
+    assert.ok(
+      small.product > 0.5,
+      `${direction}: a 20-unit pull moves the product (${small.product})`,
+    );
+    assert.ok(
+      small.product < medium.product && medium.product < large.product,
+      `${direction}: the further the pull, the more the product follows (${small.product}, ${medium.product}, ${large.product})`,
+    );
+    assert.ok(
+      large.others < large.product,
+      `${direction}: other branches move less than the pulled one`,
+    );
+  }
+});
