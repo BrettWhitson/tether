@@ -50,7 +50,10 @@ export class Emitter {
     this.#listeners.get(type)?.delete(listener);
   }
 
-  /** Does anything listen for `type`? (skip building costly event payloads when nothing does) */
+  /**
+   * Does anything listen for `type`? (skip building costly event payloads when nothing does)
+   * @param {keyof Events & string} type
+   */
   hasListeners(type) {
     return (this.#listeners.get(type)?.size ?? 0) > 0;
   }
@@ -72,7 +75,10 @@ export class Emitter {
       }
   }
 
-  /** Remove every listener (or every listener for `type`). */
+  /**
+   * Remove every listener (or every listener for `type`).
+   * @param {keyof Events & string} [type]
+   */
   removeAllListeners(type) {
     if (type == null) this.#listeners.clear();
     else this.#listeners.delete(type);

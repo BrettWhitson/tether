@@ -39,8 +39,11 @@ export declare class Emitter<Events extends Record<string, any[]>> {
     type: K,
     listener: (...args: Events[K]) => void,
   ): void;
-  /** Does anything listen for `type`? (skip building costly event payloads when nothing does) */
-  hasListeners(type: any): boolean;
+  /**
+   * Does anything listen for `type`? (skip building costly event payloads when nothing does)
+   * @param {keyof Events & string} type
+   */
+  hasListeners(type: keyof Events & string): boolean;
   /**
    * @protected
    * @template {keyof Events & string} K
@@ -51,6 +54,9 @@ export declare class Emitter<Events extends Record<string, any[]>> {
     type: K,
     ...args: Events[K]
   ): void;
-  /** Remove every listener (or every listener for `type`). */
-  removeAllListeners(type: any): void;
+  /**
+   * Remove every listener (or every listener for `type`).
+   * @param {keyof Events & string} [type]
+   */
+  removeAllListeners(type?: keyof Events & string): void;
 }
