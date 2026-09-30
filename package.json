@@ -44,6 +44,7 @@
     "types",
     "README.md",
     "API.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ]
 }
