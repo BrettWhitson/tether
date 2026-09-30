@@ -68,5 +68,24 @@ export declare function listLayouts(): {
 }[];
 /** The layout the settings ask for: `layout`, with `direction: "radial"` as shorthand for the radial layout. */
 export declare function layoutNameOf(settings: any): any;
+/**
+ * How the laid-out graph flows, for whoever draws it: whether its levels run along an axis, which axis, which way
+ * the root lies (a unit vector; zero when there's no direction), and which way the tree grows (root → leaves, as a
+ * direction: "TB", "BT", "LR", "RL"). Renderers read this instead of interpreting the settings themselves.
+ * @param {Partial<import('./settings.js').LayoutSettings>} settings
+ * @returns {{ directional: boolean, axis: "x" | "y" | null, rootSide: { x: number, y: number },
+ *             growth: "TB" | "BT" | "LR" | "RL" | null }}
+ */
+export declare function flowOf(
+  settings: Partial<import("./settings.js").LayoutSettings>,
+): {
+  directional: boolean;
+  axis: "x" | "y" | null;
+  rootSide: {
+    x: number;
+    y: number;
+  };
+  growth: "TB" | "BT" | "LR" | "RL" | null;
+};
 /** Does this layout spread levels along an axis (the direction)? Unknown layouts count as the tree they fall back to. */
 export declare function isDirectionalLayout(settings: any): boolean;

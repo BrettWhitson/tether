@@ -253,7 +253,9 @@ runLayout(graph, { layout: "grid" });
   horizontal flows and routes edges with right angles).
 
 `getLayout(name)`, `listLayouts()` (`[{ name, label, directional }]`), `layoutNameOf(settings)` and
-`isDirectionalLayout(settings)` answer questions about them. `direction: "radial"` is shorthand for
+`isDirectionalLayout(settings)` answer questions about them. `flowOf(settings)` tells a renderer how the graph flows:
+`{ directional, axis, rootSide, growth }` (the axis levels run along, a unit vector toward the root, and the tree's
+growth direction), so it never has to interpret the settings itself. `direction: "radial"` is shorthand for
 `layout: "radial"`.
 
 ## Custom forces

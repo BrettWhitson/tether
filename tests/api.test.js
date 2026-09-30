@@ -11,6 +11,7 @@ import {
   TUNING_OPTIONS,
   TUNING_SCHEMA,
   createForce,
+  flowOf,
   isColor,
   isDirectionalLayout,
   listLayouts,
@@ -443,4 +444,19 @@ test("duplicate edges: an edge given twice (same id, or same ends without one) i
   );
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /LayoutGraph edges: 2 duplicate ids/);
+});
+
+test("flowOf: how a layout flows, for renderers", () => {
+  assert.deepEqual(flowOf({ direction: "LR" }), {
+    directional: true,
+    axis: "x",
+    rootSide: { x: 1, y: 0 },
+    growth: "RL",
+  });
+  assert.deepEqual(flowOf({ direction: "BT" }).rootSide, { x: 0, y: -1 });
+  assert.equal(flowOf({ direction: "radial" }).directional, false);
+  assert.deepEqual(flowOf({ layout: "radial", direction: "LR" }).rootSide, {
+    x: 0,
+    y: 0,
+  });
 });

@@ -10,6 +10,7 @@ export {
   listLayouts,
   layoutNameOf,
   isDirectionalLayout,
+  flowOf,
 } from "./layouts.js";
 export {
   registerForce,

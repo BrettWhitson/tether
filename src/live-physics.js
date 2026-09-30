@@ -1,7 +1,6 @@
 import { ElasticNetwork } from "./elastic.js";
 import { Emitter } from "./emitter.js";
-import { isHorizontalDirection } from "./directions.js";
-import { isDirectionalLayout } from "./layouts.js";
+import { flowOf } from "./layouts.js";
 import { PHYSICS_TUNING, resolveTuning } from "./tuning.js";
 
 /**
@@ -166,11 +165,7 @@ export class LivePhysics extends Emitter {
         anchor: t.elasticAnchorBase + t.elasticAnchorPerCenter * s.centerForce,
         damping: t.elasticDamping,
         // Trees hold their levels more firmly than their place along them.
-        alongAxis: isDirectionalLayout(s)
-          ? isHorizontalDirection(s.direction)
-            ? "x"
-            : "y"
-          : null,
+        alongAxis: flowOf(s).axis,
         alongHold: t.elasticAlongHold,
         wake: t.elasticWake,
         rest: t.elasticRest,

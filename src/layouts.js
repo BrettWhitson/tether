@@ -82,6 +82,44 @@ export function layoutNameOf(settings) {
     : (settings.layout ?? "tree");
 }
 
+/**
+ * How the laid-out graph flows, for whoever draws it: whether its levels run along an axis, which axis, which way
+ * the root lies (a unit vector; zero when there's no direction), and which way the tree grows (root → leaves, as a
+ * direction: "TB", "BT", "LR", "RL"). Renderers read this instead of interpreting the settings themselves.
+ * @param {Partial<import('./settings.js').LayoutSettings>} settings
+ * @returns {{ directional: boolean, axis: "x" | "y" | null, rootSide: { x: number, y: number },
+ *             growth: "TB" | "BT" | "LR" | "RL" | null }}
+ */
+export function flowOf(settings) {
+  if (!isDirectionalLayout(settings))
+    return {
+      directional: false,
+      axis: null,
+      rootSide: { x: 0, y: 0 },
+      growth: null,
+    };
+  const direction = settings.direction ?? "BT";
+  const growth = /** @type {"TB" | "BT" | "LR" | "RL"} */ (
+    treeDirection(direction)
+  );
+  // The direction names the flow leaves → root, so the root lies at its far end.
+  const rootSide = {
+    TB: { x: 0, y: 1 },
+    BT: { x: 0, y: -1 },
+    LR: { x: 1, y: 0 },
+    RL: { x: -1, y: 0 },
+  }[direction] ?? {
+    x: 0,
+    y: -1,
+  };
+  return {
+    directional: true,
+    axis: isHorizontalDirection(direction) ? "x" : "y",
+    rootSide,
+    growth,
+  };
+}
+
 /** Does this layout spread levels along an axis (the direction)? Unknown layouts count as the tree they fall back to. */
 export function isDirectionalLayout(settings) {
   return (registry.get(layoutNameOf(settings)) ?? registry.get("tree"))
