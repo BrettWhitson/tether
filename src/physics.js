@@ -9,8 +9,13 @@
  *
  * Plus a structure force for the layout, and collision so nodes (and their labels) don't overlap:
  *  - "layered": each node is pulled toward the line for its level, `distance` apart along the flow axis;
- *  - "radial":  the result is pinned in the centre; each node is pulled toward the ring for its depth.
+ *  - "radial":  the result is pinned in the centre; each node is pulled toward the ring for its depth;
+ *  - "none":    no structure (layouts of your own that only want the forces).
  * Center also sets how firmly nodes hold their level or ring (0 loose, 1 crisp).
+ *
+ * Extra forces (forces.js, or any object with apply(simulation, alpha)) run after the built-in ones, every tick.
+ * They read and write the public arrays: x, y (positions), vx, vy (velocities: add to these), fx, fy (NaN unless
+ * held), halfW, halfH (collision half-sizes), linkSources, linkTargets, degree, and ids / indexById / count.
  *
  * The simulation keeps running while a node is dragged: the dragged node is held under the pointer and everything
  * else reacts (neighbours follow, others make room), then it cools down and settles.
@@ -22,7 +27,24 @@ import { PHYSICS_TUNING, ticksFor } from "./tuning.js";
 
 export { ticksFor };
 
-const MAX_TREE_DEPTH = 24;
+/**
+ * @typedef {object} SimulationOptions
+ * @property {"layered" | "radial" | "none"} mode  the structure force
+ * @property {"x" | "y"} [axis]  layered only: the flow axis levels are spread along
+ * @property {number} center  the four force settings
+ * @property {number} repel
+ * @property {number} link
+ * @property {number} distance
+ * @property {Map<string, number>} [depthById]  radial: each node's ring
+ * @property {string} [rootId]
+ * @property {Partial<typeof PHYSICS_TUNING>} [tuning]
+ * @property {(graphIndex: number) => { w: number, h: number }} [sizeOf]  collision box (default: the node box)
+ * @property {import('./forces.js').Force[]} [forces]  extra forces, applied after the built-in ones
+ * @property {boolean} [softCollisions]  push overlaps apart through velocities (Floating) instead of outright
+ * @property {boolean} [polish]  simulateForces: resolve overlaps exactly at the end (default true)
+ * @property {boolean} [equilibrate]  simulateForces: bring the result truly to rest (Floating)
+ * @property {number} [ticks]  simulateForces: how long to settle (default: ticksFor(count))
+ */
 
 export class ForceSimulation {
   alpha = 1;
@@ -31,9 +53,7 @@ export class ForceSimulation {
 
   /**
    * @param {import('./layout-graph.js').LayoutGraph} graph  current positions are the starting point; ghosts sit out
-   * @param {{ mode: 'layered' | 'radial', axis?: 'x' | 'y', center: number, repel: number, link: number,
-   *           distance: number, depthById?: Map<string, number>, rootId?: string, tuning?: object,
-   *           sizeOf?: (graphIndex: number) => { w: number, h: number } }} options
+   * @param {SimulationOptions} options
    *   axis: layered only, the flow axis levels are spread along
    *   depthById / rootId: radial rings
    *   sizeOf: collision box per node, including its label (default: the node box)
@@ -116,7 +136,10 @@ export class ForceSimulation {
         );
 
     this.#takeCenter();
-    this.#tree = new Quadtree(count);
+    /** Extra forces (forces.js), applied every tick after the built-in ones. */
+    this.forces = [...(options.forces ?? [])];
+    for (const force of this.forces) force.initialize?.(this);
+    this.#tree = new Quadtree(count, this.tuning.maxTreeDepth);
     this.#grid = new CollisionGrid(count);
   }
 
@@ -290,6 +313,21 @@ export class ForceSimulation {
     if (this.options.mode !== "radial")
       this.#center(center * t.centerScale * alpha);
     this.#structure(alpha);
+    for (const force of this.forces) force.apply(this, alpha);
+  }
+
+  /** Add a force while it runs (see forces.js). Returns a function that takes it out again. */
+  addForce(force) {
+    if (typeof force?.apply !== "function")
+      throw new TypeError(
+        "addForce: a force needs an apply(simulation, alpha) method",
+      );
+    this.forces.push(force);
+    force.initialize?.(this);
+    return () => {
+      const k = this.forces.indexOf(force);
+      if (k >= 0) this.forces.splice(k, 1);
+    };
   }
 
   /**
@@ -397,8 +435,12 @@ export class ForceSimulation {
   /** Levels (layered) or rings (radial). Center sets how firmly nodes hold them. */
   #structure(alpha) {
     const mode = this.options.mode;
+    if (mode !== "layered" && mode !== "radial") return;
+    const t = this.tuning;
     const strength =
-      this.tuning.structureScale * (0.15 + 4.25 * this.options.center) * alpha; // 0 loose, default 0.2 → ×1, 1 crisp
+      t.structureScale *
+      (t.structureBase + t.structurePerCenter * this.options.center) *
+      alpha; // 0 loose, default 0.2 → ×1, 1 crisp
     const { x, y, vx, vy, structureTarget: target } = this;
     if (mode === "layered") {
       const along = this.options.axis === "x" ? x : y;
@@ -651,10 +693,12 @@ export function simulateForces(graph, options) {
 /**
  * A quadtree over points in flat typed arrays, rebuilt every tick without allocating. Cell 0 is the root; a cell is
  * a leaf holding one point (index ≥ 0), an internal cell with up to four children, or empty. Coincident points past
- * MAX_TREE_DEPTH merge into one leaf's mass.
+ * `maxDepth` (tuning: maxTreeDepth) merge into one leaf's mass.
  */
 export class Quadtree {
-  constructor(points) {
+  /** @param {number} points  expected point count (it grows as needed) */
+  constructor(points, maxDepth = PHYSICS_TUNING.maxTreeDepth) {
+    this.maxDepth = maxDepth;
     this.#grow(Math.max(16, points * 4 + 8));
   }
 
@@ -717,7 +761,7 @@ export class Quadtree {
           this.mass[cell] = 1;
           return;
         }
-        if (depth > MAX_TREE_DEPTH) {
+        if (depth > this.maxDepth) {
           this.mass[cell]++; // coincident points: merge
           return;
         }

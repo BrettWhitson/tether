@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 
 export default [
-  { ignores: ["node_modules/**"] },
+  { ignores: ["node_modules/**", "types/**"] },
   js.configs.recommended,
   {
     files: ["src/**/*.js"],
@@ -13,7 +13,7 @@ export default [
     },
   },
   {
-    files: ["tests/**/*.js", "eslint.config.js"],
+    files: ["tests/**/*.js", "tools/**/*.mjs", "eslint.config.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",
@@ -36,4 +36,6 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  // Command-line tools report to the console.
+  { files: ["tools/**/*.mjs"], rules: { "no-console": "off" } },
 ];

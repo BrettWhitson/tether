@@ -1,6 +1,8 @@
 import { ElasticNetwork } from "./elastic.js";
-import { isDirectionalLayout, isHorizontalDirection } from "./directions.js";
-import { PHYSICS_TUNING } from "./tuning.js";
+import { Emitter } from "./emitter.js";
+import { isHorizontalDirection } from "./directions.js";
+import { isDirectionalLayout } from "./layouts.js";
+import { PHYSICS_TUNING, resolveTuning } from "./tuning.js";
 
 /**
  * Tether's physics after the layout: dragging, shaking, floating into place. A renderer tells it what the pointer
@@ -12,6 +14,7 @@ import { PHYSICS_TUNING } from "./tuning.js";
  *    the pulled shape. Link force sets how far a pull reaches, center force how firmly nodes hold on.
  *  - floating: the whole graph is live (the layout's force simulation, physics.js): the held node drags its
  *    neighbours, the rest sways and makes room, and it all settles again after you let go.
+ *  - none: the held node moves alone.
  *
  *   const physics = new LivePhysics(settings);
  *   physics.simulation = runLayout(graph, settings);
@@ -20,27 +23,37 @@ import { PHYSICS_TUNING } from "./tuning.js";
  *
  * Positions are read through `positionOf(id)`, so the physics starts from what's on screen (a transition may still
  * be under way). A drag stays in the mode it started in, even if the mode setting changes before it ends.
+ *
+ * Events (physics.on(type, listener) returns an unsubscribe function):
+ *  - "grab" ({ id, mode }), "release" ({ id, mode }): a node was grabbed or let go;
+ *  - "start" ({ reason }): step() has something to move again ("drag", "shake" or "float-in");
+ *  - "settle" (): everything is still again (step() went quiet, or stop()).
+ * @extends {Emitter<{ grab: [{ id: string, mode: string }], release: [{ id: string, mode: string }],
+ *                     start: [{ reason: string }], settle: [] }>}
  */
-export class LivePhysics {
+export class LivePhysics extends Emitter {
   #simulation = null;
   #settings;
   #tuning = { ...PHYSICS_TUNING };
-  /** What step() advances: "net" (the elastic net), "simulation", or null (nothing moving). */
+  /** What step() advances: "net" (the elastic net), "simulation", "single" (mode none), or null (nothing moving). */
   #running = null;
   /** For a simulation run: its own finish line, or null (until it cools). */
   #until = null;
   #net = null;
   #netIds = [];
-  /** The node being dragged and the engine holding it ("net" or "simulation"), or null. */
+  /** Mode none: where the held node goes next, or null. */
+  #single = null;
+  /** The node being dragged and the engine holding it ("net", "simulation" or "single"), or null. */
   #held = null;
   /** step()'s list of moved nodes for a simulation run, reused frame to frame. */
   #moved = [];
 
   /**
-   * @param {{ physicsMode?: string, linkForce: number, centerForce: number, direction: string }} settings
+   * @param {{ physicsMode?: string, linkForce: number, centerForce: number, direction: string, layout?: string }} settings
    *   read on every grab, so the caller may change them in place
    */
   constructor(settings) {
+    super();
     this.#settings = settings;
   }
 
@@ -62,17 +75,22 @@ export class LivePhysics {
   }
 
   /**
-   * PHYSICS_TUNING (tuning.js) with these overrides; every other constant goes back to its default. Applies to the
-   * running simulation too.
+   * PHYSICS_TUNING (tuning.js) with these overrides, checked (see resolveTuning); every other constant goes back to
+   * its default. Applies to the running simulation too.
    */
   set tuning(tuning) {
-    this.#tuning = { ...PHYSICS_TUNING, ...tuning };
+    this.#tuning = resolveTuning(tuning);
     if (this.#simulation) Object.assign(this.#simulation.tuning, this.#tuning);
   }
 
   /** Does step() have anything to move? */
   get active() {
     return this.#running !== null;
+  }
+
+  /** The node being dragged, or null. */
+  get heldId() {
+    return this.#held?.id ?? null;
   }
 
   /** The elastic net while a node is held and until it settles, or null (for developer tools). */
@@ -90,14 +108,27 @@ export class LivePhysics {
     this.stop();
     const at = positionOf(id);
     if (!at) return;
-    if (this.#settings.physicsMode === "floating") {
-      const started = this.#runSimulation(positionOf, (simulation) => {
-        simulation.reheat(this.#tuning.dragHeat);
-        // What's on screen is rest: only what the drag changes moves anything.
-        simulation.holdRest();
-        simulation.fix(id, at);
-      });
-      if (started) this.#held = { id, engine: "simulation" };
+    const mode = this.#settings.physicsMode ?? "elastic";
+    if (mode === "none") {
+      this.#held = { id, engine: "single" };
+      this.emit("grab", { id, mode });
+      return;
+    }
+    if (mode === "floating") {
+      if (!this.#simulation) return;
+      this.emit("grab", { id, mode });
+      this.#runSimulation(
+        positionOf,
+        (simulation) => {
+          simulation.reheat(this.#tuning.dragHeat);
+          // What's on screen is rest: only what the drag changes moves anything.
+          simulation.holdRest();
+          simulation.fix(id, at);
+        },
+        null,
+        "drag",
+      );
+      this.#held = { id, engine: "simulation" };
       return;
     }
     const placed = [],
@@ -143,21 +174,28 @@ export class LivePhysics {
     this.#netIds = placed;
     this.#net.grab(id, at);
     this.#held = { id, engine: "net" };
-    this.#running = "net";
+    this.emit("grab", { id, mode: "elastic" });
+    this.#run("net", "drag");
   }
 
   /** The held node moved to `point`. */
   drag(id, point) {
     if (this.#held?.id !== id) return;
-    if (this.#held.engine === "simulation") {
+    const { engine } = this.#held;
+    if (engine === "single") {
+      this.#single = { id, x: point.x, y: point.y };
+      this.#run("single", "drag");
+      return;
+    }
+    if (engine === "simulation") {
       if (!this.#simulation) return;
       this.#simulation.fix(id, point);
-      this.#running ??= "simulation";
+      if (!this.#running) this.#run("simulation", "drag");
       return;
     }
     if (!this.#net) return;
     this.#net.move(id, point);
-    this.#running ??= "net";
+    if (!this.#running) this.#run("net", "drag");
   }
 
   /** The held node was let go. */
@@ -165,16 +203,18 @@ export class LivePhysics {
     if (this.#held?.id !== id) return;
     const { engine } = this.#held;
     this.#held = null;
+    this.emit("release", { id, mode: MODE_OF_ENGINE[engine] });
+    if (engine === "single") return;
     if (engine === "simulation") {
       if (!this.#simulation) return;
       this.#simulation.release(id);
       this.#simulation.reheat(0); // cool down from here
-      this.#running ??= "simulation";
+      if (!this.#running) this.#run("simulation", "drag");
       return;
     }
     if (!this.#net) return;
     this.#net.release(id);
-    this.#running ??= "net";
+    if (!this.#running) this.#run("net", "drag");
   }
 
   /**
@@ -182,15 +222,20 @@ export class LivePhysics {
    * each time), heat the simulation to `heat` (0..1) and let it cool. Returns false without a simulation.
    */
   shake(positionOf, { heat = 0.6, scatter = 0 } = {}) {
-    return this.#runSimulation(positionOf, (simulation) => {
-      if (scatter)
-        for (let i = 0; i < simulation.count; i++) {
-          simulation.x[i] += (unitNoise(i * 2) * 2 - 1) * scatter;
-          simulation.y[i] += (unitNoise(i * 2 + 1) * 2 - 1) * scatter;
-        }
-      simulation.alphaTarget = 0;
-      simulation.alpha = Math.max(simulation.alpha, heat);
-    });
+    return this.#runSimulation(
+      positionOf,
+      (simulation) => {
+        if (scatter)
+          for (let i = 0; i < simulation.count; i++) {
+            simulation.x[i] += (unitNoise(i * 2) * 2 - 1) * scatter;
+            simulation.y[i] += (unitNoise(i * 2 + 1) * 2 - 1) * scatter;
+          }
+        simulation.alphaTarget = 0;
+        simulation.alpha = Math.max(simulation.alpha, heat);
+      },
+      null,
+      "shake",
+    );
   }
 
   /**
@@ -210,6 +255,7 @@ export class LivePhysics {
         ++ticks >= this.#tuning.floatInTicks ||
         (simulation.alpha - simulation.alphaTarget < 0.01 &&
           simulation.motion < this.#tuning.stillness),
+      "float-in",
     );
   }
 
@@ -220,9 +266,10 @@ export class LivePhysics {
       this.#simulation.reheat(0);
     }
     this.#held = null;
-    this.#running = null;
     this.#until = null;
     this.#net = null;
+    this.#single = null;
+    this.#quiet();
   }
 
   /**
@@ -232,14 +279,23 @@ export class LivePhysics {
    * @returns {{ moving: boolean, moved: [string, number, number][] }}
    */
   step() {
+    if (this.#running === "single") {
+      const single = this.#single;
+      this.#single = null;
+      this.#quiet();
+      return {
+        moving: false,
+        moved: single ? [[single.id, single.x, single.y]] : [],
+      };
+    }
     if (this.#running === "net") {
       const net = this.#net,
         ids = this.#netIds;
       const moving = net.step();
       const moved = net.changed.map((i) => [ids[i], net.x[i], net.y[i]]);
       if (!moving) {
-        this.#running = null;
         if (!net.held.includes(1)) this.#net = null;
+        this.#quiet();
       }
       return { moving, moved };
     }
@@ -262,25 +318,46 @@ export class LivePhysics {
       const done = until ? until(simulation) : !simulation.isActive;
       if (done) {
         if (until) simulation.alpha = simulation.alphaTarget = 0;
-        this.#running = this.#until = null;
+        this.#until = null;
+        this.#quiet();
       }
       return { moving: !done, moved };
     }
     return { moving: false, moved: [] };
   }
 
+  /** Start moving (`what`, for step()), announcing it if nothing was moving. */
+  #run(what, reason) {
+    const was = this.#running;
+    this.#running = what;
+    if (!was) this.emit("start", { reason });
+  }
+
+  /** Nothing moves any more (announced if something was). */
+  #quiet() {
+    const was = this.#running;
+    this.#running = null;
+    if (was) this.emit("settle");
+  }
+
   /** Run the simulation from what's on screen (or, without `positionOf`, its own positions) after `prepare`. */
-  #runSimulation(positionOf, prepare, until = null) {
+  #runSimulation(positionOf, prepare, until, reason) {
     const simulation = this.#simulation;
     if (!simulation) return false;
     this.stop();
     if (positionOf) simulation.setPositions(positionOf);
     prepare(simulation);
     this.#until = until;
-    this.#running = "simulation";
+    this.#run("simulation", reason);
     return true;
   }
 }
+
+const MODE_OF_ENGINE = {
+  single: "none",
+  simulation: "floating",
+  net: "elastic",
+};
 
 /** A repeatable pseudo-random number in [0, 1) for an integer. */
 function unitNoise(n) {

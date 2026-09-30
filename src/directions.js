@@ -1,12 +1,4 @@
-/** Direction helpers shared by the layouts. */
-
-/** Node size the seed layouts measure level gaps against (link distance minus this is the gap between levels). */
-export const NODE_SIZE = 48;
-
-/** Directional trees (as opposed to the radial layout). */
-export function isDirectionalLayout(settings) {
-  return settings.direction !== "radial";
-}
+/** Direction helpers shared by the layouts. Which layouts are directional: layouts.js (isDirectionalLayout). */
 
 /**
  * The direction setting describes the flow, leaves → root ("LR" = leaves on the left, root on the right). Layouts

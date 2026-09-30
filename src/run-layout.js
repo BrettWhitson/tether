@@ -1,98 +1,70 @@
-import {
-  NODE_SIZE,
-  isDirectionalLayout,
-  isHorizontalDirection,
-  treeDirection,
-} from "./directions.js";
-import { layeredLayout } from "./layered.js";
+import { createForces } from "./forces.js";
+import { getLayout, layoutNameOf } from "./layouts.js";
 import { ForceSimulation, simulateForces } from "./physics.js";
-import { radialTreeLayout, tidyTreeLayout } from "./trees.js";
-
-/** The force settings' defaults: the seed layouts scale label room and gaps relative to these. */
-const FORCE_REFERENCE = { repel: 8 };
+import { resolveSettings } from "./settings.js";
+import { resolveTuning } from "./tuning.js";
 
 /**
  * Tether's entry point: position every node for the layout settings, synchronously (the renderer animates).
  *
- * Two layouts, each in two stages:
- *  - directional tree: a tidy tree (over a spanning tree: a node with several parents sits under the first), or the
- *    layered layout (for `layered: true`, the way to lay out a DAG, or a graph without a root), then the physics with a pull toward each node's level;
- *  - radial: a radial tree (the root in the centre, one ring per depth), then the physics with a pull toward each
- *    node's ring.
- * The physics (physics.js) uses the four force settings and the tuning (tuning.js). For the Floating physics mode the
- * result is left exactly at rest (no final polish), so waking it only moves what's disturbed.
- * Positions end up in graph.x / graph.y. Returns the simulation (kept for floating drags and for waking the physics later).
+ * Every layout runs in two stages: its seed (layouts.js: "tree", "radial", or one you registered), then the physics
+ * (physics.js), with the four force settings, the tuning (tuning.js) and any extra forces (forces.js). For the
+ * Floating physics mode the result is left exactly at rest (no final polish), so waking it only moves what's
+ * disturbed.
+ * Positions end up in graph.x / graph.y. Returns the simulation (kept for floating drags and for waking the physics
+ * later), or null when the layout can't place this graph (the radial layout without a root).
+ *
+ * Settings and tuning are checked (settings.js, tuning.js): bad values are clamped or replaced by their defaults,
+ * with a warning, or throw with `strict: true`.
  * @param {import('./layout-graph.js').LayoutGraph} graph
- * @param {{ direction: string, layered?: boolean, physicsMode?: string, centerForce: number, repelForce: number,
- *            linkForce: number, linkDistance: number }} s  layout settings (direction: TB, BT, LR, RL or radial)
- * @param {{ hasPreviousPositions?: boolean, tuning?: object, settle?: boolean }} [context]
+ * @param {Partial<import('./settings.js').LayoutSettings>} settings
+ * @param {{ tuning?: Partial<typeof import('./tuning.js').PHYSICS_TUNING>, settle?: boolean, strict?: boolean }} [context]
  *   settle: false returns the seed layout with its simulation not yet run (to animate it live)
+ * @returns {ForceSimulation | null}
  */
-export function runLayout(graph, s, { tuning, settle = true } = {}) {
-  const physics = {
+export function runLayout(
+  graph,
+  settings,
+  { tuning, settle = true, strict = false } = {},
+) {
+  const s = resolveSettings(settings, { strict });
+  const t = resolveTuning(tuning, { strict });
+  const name = layoutNameOf(s);
+  let layout = getLayout(name);
+  if (!layout) {
+    const message = `Tether: unknown layout "${name}"; using "tree"`;
+    if (strict) throw new TypeError(message);
+    console.warn(message);
+    layout = getLayout("tree");
+  }
+  // Seeds space siblings in proportion to repel; collision boxes reserve that share of each label's width
+  // (low repel packs tighter and lets labels overlap).
+  const labelShare = Math.min(1, s.repelForce / t.referenceRepel);
+  const sizeOf = (i) => graph.footprint(i, labelShare, 1);
+  const setup = layout.seed(graph, s, {
+    tuning: t,
+    labelShare,
+    siblingGap: s.repelForce * t.siblingGapPerRepel,
+    levelGap: Math.max(0, s.linkDistance - t.seedNodeSize),
+    sizeOf,
+  });
+  if (!setup) return null;
+  const floating = s.physicsMode === "floating";
+  const options = {
+    ...setup,
     center: s.centerForce,
     repel: s.repelForce,
     link: s.linkForce,
     distance: s.linkDistance,
-    tuning,
-    // Floating graphs start truly at rest (see ForceSimulation.equilibrate), with no final polish to unbalance them.
-    polish: s.physicsMode !== "floating",
-    equilibrate: s.physicsMode === "floating",
-    softCollisions: s.physicsMode === "floating",
-  };
-  // Seeds space siblings in proportion to repel; collision boxes reserve that share of each label's width
-  // (low repel packs tighter and lets labels overlap).
-  const labelShare = Math.min(1, s.repelForce / FORCE_REFERENCE.repel);
-  const siblingGap = s.repelForce * 3;
-  const levelGap = Math.max(0, s.linkDistance - NODE_SIZE);
-  const sizeOf = (i) => graph.footprint(i, labelShare, 1);
-  const finish = (options) =>
-    settle
-      ? simulateForces(graph, options)
-      : new ForceSimulation(graph, options);
-
-  if (!isDirectionalLayout(s)) {
-    const tree = radialTreeLayout(graph, {
-      siblingGap,
-      ringStep: s.linkDistance,
-    });
-    if (!tree) return null;
-    return finish({
-      mode: "radial",
-      ...physics,
-      depthById: tree.depthById,
-      rootId: tree.rootId,
-      sizeOf,
-    });
-  }
-
-  // Directional tree: seed with the tidy tree, or the layered layout (asked for, or no root to grow a tree from).
-  const horizontal = isHorizontalDirection(s.direction);
-  const growth = treeDirection(s.direction); // root → leaves
-  const seeded =
-    !s.layered &&
-    tidyTreeLayout(graph, {
-      direction: growth,
-      siblingGap,
-      levelGap,
-      breadthLabelShare: labelShare,
-    });
-  if (!seeded) {
-    const [widthLabelShare, heightLabelShare] = horizontal
-      ? [1, labelShare]
-      : [labelShare, 1];
-    layeredLayout(graph, {
-      direction: growth,
-      nodeSep: siblingGap,
-      rankSep: levelGap,
-      widthLabelShare,
-      heightLabelShare,
-    });
-  }
-  return finish({
-    mode: "layered",
-    axis: horizontal ? "x" : "y",
-    ...physics,
+    tuning: t,
     sizeOf,
-  });
+    forces: createForces(s.forces),
+    // Floating graphs start truly at rest (see ForceSimulation.equilibrate), with no final polish to unbalance them.
+    polish: !floating,
+    equilibrate: floating,
+    softCollisions: floating,
+  };
+  return settle
+    ? simulateForces(graph, options)
+    : new ForceSimulation(graph, options);
 }

@@ -19,6 +19,8 @@ import { placeAlong } from "./trees.js";
  *
  * @param {import('./layout-graph.js').LayoutGraph} graph  positions are written to graph.x / graph.y
  * @param {{ direction: 'TB'|'BT'|'LR'|'RL', nodeSep: number, rankSep: number, edgeSep?: number,
+ *           sweeps?: number, transposePasses?: number, alignRounds?: number, rankPasses?: number,
+ *           longEdgeWeight?: number,
  *           widthLabelShare?: number, heightLabelShare?: number }} options
  *   direction: root → leaves
  * @returns {{ ranks: number[][], crossings: number }} for tests and diagnostics (dummies included, as indexes ≥ count)
@@ -30,6 +32,11 @@ export function layeredLayout(
     nodeSep = 24,
     rankSep = 50,
     edgeSep = 6,
+    sweeps = 12,
+    transposePasses = 6,
+    alignRounds = 6,
+    rankPasses = 24,
+    longEdgeWeight = 8,
     widthLabelShare = 1,
     heightLabelShare = 1,
   },
@@ -46,7 +53,7 @@ export function layeredLayout(
   }
 
   const { order: dfsOrder, edges } = acyclicEdges(graph);
-  const rank = assignRanks(n, edges, dfsOrder);
+  const rank = assignRanks(n, edges, dfsOrder, rankPasses);
 
   // Dummies: node indexes n, n+1, … along every edge that spans more than one rank.
   const down = []; // node → nodes on the next rank
@@ -93,7 +100,7 @@ export function layeredLayout(
   for (const i of dfsOrder) visit(i);
   for (let i = 0; i < total; i++) if (!seen[i]) visit(i);
 
-  const crossings = minimiseCrossings(ranks, up, down);
+  const crossings = minimiseCrossings(ranks, up, down, sweeps, transposePasses);
 
   // Coordinates across the ranks.
   const across = new Float64Array(total);
@@ -106,8 +113,8 @@ export function layeredLayout(
       across[i] = cursor;
     });
   }
-  const weightOf = (i) => (isDummy(i) ? 8 : 1);
-  for (let round = 0; round < 6; round++) {
+  const weightOf = (i) => (isDummy(i) ? longEdgeWeight : 1);
+  for (let round = 0; round < alignRounds; round++) {
     // Down sweeps follow parents, up sweeps follow children.
     const downward = round % 2 === 0;
     const order = downward
@@ -196,7 +203,7 @@ function dedupe(edges) {
 }
 
 /** Ranks such that every edge goes down ≥ 1 rank and edges stay short; lowest rank 0. */
-function assignRanks(n, edges, order) {
+function assignRanks(n, edges, order, passes) {
   const parents = Array.from({ length: n }, () => []);
   const children = Array.from({ length: n }, () => []);
   for (const [s, t] of edges) {
@@ -211,7 +218,7 @@ function assignRanks(n, edges, order) {
 
   // Short edges: move each node to the median of where its neighbours want it, within the ranks its parents and
   // children allow, until nothing moves (a local optimum of the total edge length, like network simplex).
-  for (let pass = 0; pass < 24; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     let moved = false;
     for (const i of topological) {
       if (!parents[i].length) continue; // roots stay put
@@ -280,7 +287,7 @@ function median(sorted) {
  * Barycentre sweeps: each rank sorted by the mean position of its neighbours on the rank just placed, alternating
  * down and up. Keeps the best ordering seen, then transposes. Returns its crossing count.
  */
-function minimiseCrossings(ranks, up, down, sweeps = 12) {
+function minimiseCrossings(ranks, up, down, sweeps, transposePasses) {
   const position = new Map();
   const index = () =>
     ranks.forEach((members) => members.forEach((i, k) => position.set(i, k)));
@@ -313,12 +320,12 @@ function minimiseCrossings(ranks, up, down, sweeps = 12) {
   }
   best.forEach((members, r) => (ranks[r] = members));
   index();
-  transpose(ranks, up, down, position);
+  transpose(ranks, up, down, position, transposePasses);
   return countCrossings(ranks, down, position);
 }
 
 /** Swap neighbours on a rank while that removes crossings with the ranks above and below. */
-function transpose(ranks, up, down, position, passes = 6) {
+function transpose(ranks, up, down, position, passes) {
   // Crossings among u's and v's edges (both sides) with u to the left of v.
   const crossings = (u, v) => {
     let count = 0;
