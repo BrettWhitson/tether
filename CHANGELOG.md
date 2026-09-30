@@ -2,7 +2,7 @@
 
 Tether: graph layout and physics. Versions follow `0.MINOR.PATCH` until the first stable release.
 
-## Unreleased (branch `perf`)
+## 0.3.0 (2026-09-30)
 
 - **Faster layouts, the same results.** Repulsion walks a flattened quadtree: its cells laid out in the order
   they're visited, with a pointer past each subtree, instead of a stack over scattered cells. The quadtree is also
